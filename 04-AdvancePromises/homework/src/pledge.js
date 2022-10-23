@@ -4,11 +4,11 @@ Promises Workshop: construye la libreria de ES6 promises, pledge.js
 ----------------------------------------------------------------*/
 // // TU CÓDIGO AQUÍ:
 
-function $Promise (executor){
+function $Promise(executor) {
     this._state = 'pending';
     this._handlerGroups = [];
-    
-    if(typeof executor !== 'function'){
+
+    if (typeof executor !== 'function') {
         throw TypeError('El arg executor tiene que ser function')
     };
     /* var resolve = function(data){
@@ -19,46 +19,90 @@ function $Promise (executor){
     }; */
 
 
-    executor(this._internalResolve.bind(this),this._internalReject.bind(this));
+    executor(this._internalResolve.bind(this), this._internalReject.bind(this));
 };
 
 
-$Promise.prototype._internalResolve = function(data){
-    if(this._state === 'pending'){
+$Promise.prototype._internalResolve = function (data) {
+    if (this._state === 'pending') {
         this._state = 'fulfilled',
-        this._value = data
+            this._value = data
         this._callHandlers()
     };
 };
 
-$Promise.prototype._internalReject = function(data){
-    if(this._state === 'pending'){
+$Promise.prototype._internalReject = function (data) {
+    if (this._state === 'pending') {
         this._state = 'rejected',
-        this._value = data
+            this._value = data
         this._callHandlers()
     };
 };
 
-$Promise.prototype.then = function(successCb,errorCb){
-    if(typeof successCb !== 'function'){ successCb = false }
-    if(typeof errorCb !== 'function'){ errorCb = false}
-    this._handlerGroups.push({successCb,errorCb})
-    if(this._state !=='pending'){
+$Promise.prototype.then = function (successCb, errorCb) {
+    if (typeof successCb !== 'function') { successCb = false }
+    if (typeof errorCb !== 'function') { errorCb = false }
+    var downstreamPromise = new $Promise(function () { })
+    this._handlerGroups.push({ successCb, errorCb, downstreamPromise })
+    if (this._state !== 'pending') {
         this._callHandlers()
+    }
+    return downstreamPromise;
+};
+
+$Promise.prototype._callHandlers = function () {
+    while (this._handlerGroups.length) {
+        const handlf = this._handlerGroups.shift()
+        if (this._state === 'fulfilled') {
+            if (handlf.successCb) {
+                try {
+                    const result = handlf.successCb(this._value);
+                    if (result instanceof $Promise) {
+                        result.then(
+                            value => handlf.downstreamPromise._internalResolve(value),
+                            error => handlf.downstreamPromise._internalReject(error)
+                        )
+                    }
+                    else {
+                        handlf.downstreamPromise._internalResolve(result)
+                    }
+                }
+                catch (error) {
+                    handlf.downstreamPromise._internalReject(error)
+                }
+            }
+            else {
+                handlf.downstreamPromise._internalResolve(this._value)
+            }
+        }
+        else {
+            if (handlf.errorCb) {
+                try {
+                    const result = handlf.errorCb(this._value);
+                    if (result instanceof $Promise) {
+                        result.then(
+                            value => handlf.downstreamPromise._internalResolve(value),
+                            error => handlf.downstreamPromise._internalReject(error)
+                        )
+                    }
+                    else {
+                        handlf.downstreamPromise._internalResolve(result)
+                    }
+                }
+                catch (error) {
+                    handlf.downstreamPromise._internalReject(error)
+                }
+            }
+            else {
+                handlf.downstreamPromise._internalReject(this._value)
+            }
+        }
     }
 };
 
-$Promise.prototype._callHandlers = function(){
-    while(this._handlerGroups.length){
-        var handlf = this._handlerGroups.shift()
-        if (this._state ==='fulfilled'){
-            handlf.successCb && handlf.successCb(this._value);
-        }
-        else{
-            handlf.errorCb && handlf.errorCb(this._value);
-        }
-    }
-};
+$Promise.prototype.catch = function (errorCb) {
+    return this.then(null, errorCb,);
+}
 
 module.exports = $Promise;
 /*-------------------------------------------------------
